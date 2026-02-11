@@ -7,8 +7,21 @@ import {
   Modal,
   SafeAreaView,
   Platform,
+  ActivityIndicator,
 } from 'react-native'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  QuerySnapshot,
+  DocumentData,
+} from 'firebase/firestore'
+import { db } from "@/src/firebase"
+import { Trip } from '../../types/trip'
+
+/* ================= ROUTES ================= */
 
 type Route = {
   id: string
@@ -18,16 +31,6 @@ type Route = {
   pickupPoints: string[]
 }
 
-type Vehicle = {
-  id: string
-  type: 'Bus' | 'Minibus' | 'Car'
-  routeId: string
-  status: 'Not started' | 'On the way'
-  milestone?: string
-  seats: number
-}
-
-/* ROUTES (UNCHANGED) */
 const ROUTES: Route[] = [
   {
     id: 'bt-ll-zalewa',
@@ -85,42 +88,63 @@ const ROUTES: Route[] = [
   },
 ]
 
+/* ================= COMPONENT ================= */
+
 export default function PassengerHome() {
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [pickupPoint, setPickupPoint] = useState<string | null>(null)
   const [modalType, setModalType] =
     useState<'route' | 'pickup' | null>(null)
 
-  const vehicles: Vehicle[] = [
-    {
-      id: '1',
-      type: 'Minibus',
-      routeId: 'zm-bt',
-      status: 'On the way',
-      milestone: 'Njuli',
-      seats: 3,
-    },
-    {
-      id: '2',
-      type: 'Car',
-      routeId: 'bt-ll-zalewa',
-      status: 'Not started',
-      seats: 2,
-    },
-    {
-      id: '3',
-      type: 'Bus',
-      routeId: 'll-bt-zalewa',
-      status: 'On the way',
-      milestone: 'Dedza',
-      seats: 18,
-    },
-  ]
+  const [trips, setTrips] = useState<Trip[]>([])
+  const [loading, setLoading] = useState(false)
 
-  const filteredVehicles =
-    selectedRoute && pickupPoint
-      ? vehicles.filter((v) => v.routeId === selectedRoute.id)
-      : []
+  /* ================= REAL-TIME TRIP QUERY ================= */
+
+  useEffect(() => {
+    if (!selectedRoute) {
+      setTrips([])
+      return
+    }
+
+    setLoading(true)
+
+    const q = query(
+      collection(db, 'trips'),
+      where('routeId', '==', selectedRoute.id),
+      where('status', 'in', ['NOT_STARTED', 'ON_ROUTE'])
+    )
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot: QuerySnapshot<DocumentData>) => {
+        const list: Trip[] = []
+
+        snapshot.forEach((doc) => {
+          const data = doc.data() as Trip
+
+          // Filter seats > 0 (client side)
+          if (data.availableSeats > 0) {
+            list.push({
+              id: doc.id,
+              ...data,
+            })
+          }
+        })
+
+        setTrips(list)
+        setLoading(false)
+      },
+      (error) => {
+        console.log('Trip listener error:', error)
+        setLoading(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [selectedRoute])
+
+  /* ================= RENDER ================= */
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -149,35 +173,49 @@ export default function PassengerHome() {
         </TouchableOpacity>
 
         <Text style={[styles.sectionTitle, { marginTop: 10 }]}>
-          Available Vehicles
+          Available Trips
         </Text>
 
+        {loading && (
+          <ActivityIndicator
+            size="large"
+            color="#689F38"
+            style={{ marginTop: 20 }}
+          />
+        )}
+
         <FlatList
-          data={filteredVehicles}
-          keyExtractor={(item) => item.id}
+          data={selectedRoute && pickupPoint ? trips : []}
+          keyExtractor={(item) => item.id!}
           contentContainerStyle={{ paddingBottom: 40 }}
           ListEmptyComponent={
-            <Text style={styles.empty}>
-              {selectedRoute && pickupPoint
-                ? 'No vehicles available'
-                : 'Select route and pickup point'}
-            </Text>
+            !loading ? (
+              <Text style={styles.empty}>
+                {selectedRoute && pickupPoint
+                  ? 'No trips available'
+                  : 'Select route and pickup point'}
+              </Text>
+            ) : null
           }
           renderItem={({ item }) => (
             <View style={styles.card}>
               <Text style={styles.vehicleType}>
-                {item.type}
+                {item.vehicleType} • {item.vehicleColor}
               </Text>
 
               <Text style={styles.status}>
                 Status:{' '}
-                {item.status === 'On the way'
-                  ? `On the way (${item.milestone})`
+                {item.status === 'ON_ROUTE'
+                  ? 'On the way'
                   : 'Not started'}
               </Text>
 
               <Text style={styles.seats}>
-                Seats available: {item.seats}
+                Seats available: {item.availableSeats}
+              </Text>
+
+              <Text style={styles.price}>
+                MWK {item.pricePerSeat}
               </Text>
 
               <TouchableOpacity style={styles.interestBtn}>
@@ -242,10 +280,7 @@ export default function PassengerHome() {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#EAF4D3',
-  },
+  safe: { flex: 1, backgroundColor: '#EAF4D3' },
   container: {
     flex: 1,
     paddingHorizontal: 20,
@@ -265,10 +300,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C5E1A5',
   },
-  selectorText: {
-    color: '#263238',
-    fontSize: 15,
-  },
+  selectorText: { color: '#263238', fontSize: 15 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -283,30 +315,17 @@ const styles = StyleSheet.create({
     color: '#689F38',
     marginBottom: 4,
   },
-  status: {
-    fontSize: 13,
-    color: '#607D8B',
-  },
-  seats: {
-    fontSize: 13,
-    marginBottom: 12,
-    color: '#263238',
-  },
+  status: { fontSize: 13, color: '#607D8B' },
+  seats: { fontSize: 13, marginBottom: 6, color: '#263238' },
+  price: { fontSize: 14, fontWeight: '600', marginBottom: 12 },
   interestBtn: {
     backgroundColor: '#8BC34A',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
-  interestText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  empty: {
-    textAlign: 'center',
-    marginTop: 40,
-    color: '#607D8B',
-  },
+  interestText: { color: '#FFFFFF', fontWeight: '600' },
+  empty: { textAlign: 'center', marginTop: 40, color: '#607D8B' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -323,10 +342,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
-  modalText: {
-    fontSize: 15,
-    color: '#263238',
-  },
+  modalText: { fontSize: 15, color: '#263238' },
   cancel: {
     marginTop: 15,
     textAlign: 'center',

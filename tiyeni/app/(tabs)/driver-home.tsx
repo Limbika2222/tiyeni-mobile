@@ -30,6 +30,10 @@ export default function DriverHome() {
     router.replace('/login')
   }
 
+  const handleCreateTrip = () => {
+    router.push('/create-trip')
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Driver Dashboard</Text>
@@ -38,8 +42,11 @@ export default function DriverHome() {
         Welcome {driverName || 'Driver'}
       </Text>
 
-      <TouchableOpacity style={styles.button}>
-        <Text style={styles.buttonText}>Start Trip</Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleCreateTrip}
+      >
+        <Text style={styles.buttonText}>Create Trip</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

@@ -1,9 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app'
-import {
-  initializeAuth,
-  getReactNativePersistence,
-} from 'firebase/auth'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -15,15 +11,13 @@ const firebaseConfig = {
   appId: '1:665726792910:web:828da2a720689f45a8cc9f',
 }
 
-// Prevent re-initialization in Expo Fast Refresh
+// Prevent re-initialization in Fast Refresh
 const app =
-  getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
+  getApps().length === 0
+    ? initializeApp(firebaseConfig)
+    : getApp()
 
-// ✅ Proper React Native persistence
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-})
-
+export const auth = getAuth(app)
 export const db = getFirestore(app)
 
 export { app }
